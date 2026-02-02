@@ -99,94 +99,150 @@ Keeps only the 3 most recent runs.
 
 ## TODO: Path to Production Device
 
-### Phase 1: Embedded Software (ESP32-S3 Firmware)
+### Phase 0: Current Status
+
+Currently runs locally in a Python dev environment to generate images from a spoken prompt. Audio is captured from the PC microphone, and there is no printer integration yet.
+
+### Phase 1: Printer Bring-Up & Print Contract (Highest Risk)
+
+**Goal:** Prove that the device can reliably print backend-generated images.
+
+- [ ] **Confirm Printer Variant**
+  - Cashino printer with TTL UART interface (not USB / RS232)
+  - Confirm baud rate, voltage levels, status lines (paper out / busy)
+
+- [ ] **Printer Power & Electrical Validation**
+  - Dedicated power supply sized for peak current
+  - Common ground between printer and ESP32-S3
+  - Brownout testing during repeated prints
+
+- [ ] **ESC/POS Raster Contract (Device ↔ Backend)**
+  - Fixed width: 384 px (58 mm paper)
+  - Height: variable
+  - Format: ESC/POS GS v 0 raster command
+  - 1-bit packed rows, MSB-first, black=1
+  - Backend produces printer-ready bytes; device only streams
+
+- [ ] **Printer Stress Testing**
+  - Print known test patterns (checkerboard, solid fills, thin lines)
+  - 100+ consecutive prints without corruption or resets
+
+### Phase 2: Core Embedded Firmware (ESP32-S3)
+
+**Goal:** Stable networking + printing foundation.
+
+- [ ] **UART Printer Driver**
+  - Buffered writes with pacing
+  - Optional status reads (paper out / busy)
+  - Abort + recovery logic
+
+- [ ] **Wi-Fi & HTTPS Client**
+  - Robust reconnect logic
+  - Timeouts and retries with exponential backoff
+  - Non-blocking operation during print/UI updates
+
+- [ ] **Device Identity & Authentication**
+  - Unique device_id per unit
+  - Secure device token stored in NVS
+  - Backend authorization for all API calls
+  - No OpenAI keys on the device
+
+- [ ] **OTA Firmware Updates**
+  - Signed firmware images
+  - Dual-partition with rollback
+  - Safe-mode boot on repeated failure
+
+### Phase 3: Wi-Fi Provisioning & First-Boot UX
+
+**Goal:** Allow non-technical users to connect the device to Wi-Fi.
+
+- [ ] **BLE-Based Wi-Fi Provisioning**
+  - ESP32 advertises in provisioning mode on first boot
+  - Secure BLE channel for SSID/password transfer
+  - Store credentials securely in NVS
+
+- [ ] **OLED-Guided Setup Flow**
+  - Display clear step-by-step instructions
+  - Show device name / pairing instructions
+  - Feedback for success / failure
+
+- [ ] **Provisioning Controls**
+  - Long-press button to reset Wi-Fi credentials
+  - Timeout → return to provisioning mode if connection fails
+
+### Phase 4: Audio Capture & User Interaction
+
+**Goal:** Predictable, child-friendly interaction.
 
 - [ ] **I2S Audio Capture**
-  - Initialize I2S peripheral for INMP441 microphone
-  - Implement circular DMA buffer for audio streaming
-  - Provide blocking/non-blocking recording APIs
+  - INMP441 microphone
+  - Fixed recording window (e.g. 7 s)
+  - On-device silence trimming / VAD
 
-- [ ] **Wi-Fi & HTTP Client**
-  - Wi-Fi provisioning and connection management
-  - HTTPS client for backend API communication
-  - Robust retry logic and timeouts
+- [ ] **UI State Machine**
+  - States: IDLE → LISTENING → UPLOADING → PROCESSING → PRINTING → DONE
+  - Clear error states and automatic recovery
+  - Cancel operation via long button press
 
-- [ ] **Backend API Integration**
-  - `POST /api/v1/audio` – Send 5–10 second audio clip
-  - `GET /api/v1/job/{job_id}` – Poll for results (with exponential backoff)
-  - Parse response and extract base64-encoded raster data
+- [ ] **OLED Display**
+  - I2C SSD1327 driver
+  - Simple, readable status messages
+  - No blocking calls in UI loop
 
-- [ ] **Button & UI States**
-  - GPIO input for arcade button press
-  - SSD1327 OLED display driver (SPI/I2C)
-  - UI states: idle → listening → processing → printing → done
+### Phase 5: Backend Integration & Hardening
 
-- [ ] **Memory & Performance**
-  - Optimize audio buffering to fit in ESP32-S3 SRAM
-  - Implement streaming audio upload (chunked HTTP POST)
-  - Minimize latency from button press to "processing" indication
+**Goal:** Predictable cost, safety, and latency.
 
-### Phase 2: Thermal Printer Hardware Interface
+- [ ] **API Contract Enforcement**
+  - Idempotent audio uploads
+  - Job polling with TTL and expiry
+  - Explicit error codes for device UI
 
-- [ ] **Reverse-Engineer Printer Interface**
-  - Capture communication between printer controller and print head
-  - Document pin layout and signaling protocol
-  - Identify timing requirements and power draw
+- [ ] **Safety & Moderation**
+  - Always-on local heuristic moderation
+  - Optional API moderation via compile-time constant
+  - Image endpoint moderation enabled
 
-- [ ] **Direct Hardware Control (No Vendor App)**
-  - Implement printer controller bypass (direct SPI/GPIO to print head)
-  - or interface directly with existing printer electronics
-  - Validate with test prints of known patterns
+- [ ] **Cost Guardrails**
+  - Per-device rate limits
+  - Daily / monthly spend caps
+  - Automatic shutdown on anomaly
 
-- [ ] **Thermal Print Driver**
-  - Implement ESC/POS or raw thermal protocol in firmware
-  - Handle media detection and auto-feed
-  - Thermal element timing and power management
+- [ ] **Observability**
+  - Latency breakdown (ASR / image / raster)
+  - Error tracking and print success rate
+
+### Phase 6: Mechanical Integration & Electrical Robustness
+
+**Goal:** Turn electronics into a reliable product.
 
 - [ ] **Mechanical Integration**
-  - Mount ESP32-S3 + microphone + button on/near printer
-  - Integrate OLED display into enclosure
-  - Thermal dissipation for print head
+  - Mount ESP32-S3, mic, button, OLED
+  - Paper access and serviceability
+  - Thermal isolation from print head
 
-### Phase 3: Device Assembly & Testing
+- [ ] **EMI / Noise Mitigation**
+  - Separate printer and MCU power rails
+  - Filtering to protect microphone input
+  - Grounding strategy validation
 
-- [ ] **Prototype Assembly**
-  - Solder perfboard or custom PCB
-  - Wire microphone (I2S), button (GPIO), display (SPI), printer (TBD)
-  - Validate power delivery under peak load
+### Phase 7: Validation & Pre-Production
 
-- [ ] **Integration Testing**
-  - End-to-end: button → record → transcribe → generate → print
-  - Test with native Spanish speech patterns
-  - Measure latency and user experience
+**Goal:** Ensure reliability before wider deployment.
 
-- [ ] **Safety & Content Validation**
-  - Verify moderation gate blocks inappropriate prompts
-  - Stress test with adversarial inputs
-  - Child-safety audit of generated images
+- [ ] **End-to-End Soak Testing**
+  - Hundreds of print cycles
+  - Wi-Fi drop / reconnect scenarios
+  - Power interruption during print
 
-- [ ] **User Experience Polish**
-  - Button feedback (visual / haptic)
-  - Status messages on OLED display
-  - Error handling and user-friendly messages
-  - Sticker output quality and consistency
+- [ ] **Child-Safety Review**
+  - Prompt edge cases
+  - Image tone and consistency
+  - UX clarity on errors
 
-### Phase 4: Backend Deployment
-
-- [ ] **FastAPI Backend Service**
-  - RESTful API for `/api/v1/audio` upload
-  - Job queue and result caching
-  - Configurable printer width and output format
-
-- [ ] **Scaling & Monitoring**
-  - Horizontal scaling for multiple devices
-  - Logging and error tracking
-  - Cost monitoring for OpenAI API usage
-
-- [ ] **Documentation**
-  - API contract finalized
-  - Firmware integration guide
-  - Deployment instructions
+- [ ] **Golden Test Vectors**
+  - Known audio → known raster hash
+  - Regression tests for backend updates
 
 ## Project Structure
 
