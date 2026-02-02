@@ -2,8 +2,14 @@
 record_audio.py
 
 Milestone 1: Record Audio from Microphone
-- Captures a short audio clip from the PC microphone and saves it as a WAV file.
-- Usage: python record_audio.py [output.wav] [duration_seconds]
+- Captures a short audio clip from the PC microphone and saves it as a WAV file in the scripts directory.
+- Requires: sounddevice, numpy
+
+How to run test:
+    # From scripts directory
+    python record_audio.py output.wav 5
+    # All files are expected in /scripts; use only filenames, not paths.
+    # Duration must be 30 seconds or less
 """
 import sys
 import sounddevice as sd
@@ -11,8 +17,14 @@ import numpy as np
 import wave
 
 # Default parameters
-OUTPUT_FILE = sys.argv[1] if len(sys.argv) > 1 else "output.wav"
+
+DFAULT_OUTPUT = "output.wav"
+DEFAULT_PATH = "./"  # Save in /scripts
+OUTPUT_FILE = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATH + DFAULT_OUTPUT
 DURATION = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0  # seconds
+if DURATION > 30.0:
+    print("Error: Maximum recording duration is 30 seconds.")
+    sys.exit(1)
 SAMPLE_RATE = 16000  # 16 kHz, mono
 
 import time

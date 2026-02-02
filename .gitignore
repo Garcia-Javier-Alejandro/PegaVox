@@ -1,2 +1,4 @@
 # Ignore secrets and API keys
-/device/firmware/secrets.h
+.env
+.env.*
+/device/firmware/secrets*.h

@@ -3,8 +3,12 @@ transcribe_audio.py
 
 Milestone 2: Transcribe Audio to Text (Speech-to-Text)
 - Uses OpenAI Whisper API to transcribe a WAV file to text.
-- Usage: python transcribe_audio.py input.wav
 - Requires: openai, requests
+
+How to run test:
+    # From scripts directory
+    python transcribe_audio.py output.wav transcription.txt
+    # All files are expected in /scripts; use only filenames, not paths.
 """
 import sys
 import requests
@@ -18,10 +22,11 @@ if not OPENAI_API_KEY:
     sys.exit(1)
 
 if len(sys.argv) < 2:
-    print("Usage: python transcribe_audio.py input.wav")
+    print("Usage: python transcribe_audio.py input.wav [output.txt]")
     sys.exit(1)
 
 AUDIO_FILE = sys.argv[1]
+OUTPUT_FILE = sys.argv[2] if len(sys.argv) > 2 else None
 
 url = "https://api.openai.com/v1/audio/transcriptions"
 headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
@@ -36,6 +41,10 @@ try:
     result = response.json()
     print("Transcription:")
     print(result["text"])
+    if OUTPUT_FILE:
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            f.write(result["text"])
+        print(f"Transcription written to {OUTPUT_FILE}")
 except Exception as e:
     print(f"Error: {e}")
     if hasattr(e, 'response') and e.response is not None:
