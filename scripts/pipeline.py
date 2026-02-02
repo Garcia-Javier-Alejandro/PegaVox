@@ -42,10 +42,7 @@ from typing import Optional, Tuple
 import numpy as np
 import sounddevice as sd
 from PIL import Image
-
-
-
-
+from pathlib import Path
 
 # ----------------------------
 # Config / constants
@@ -69,40 +66,93 @@ DEFAULT_PRINTER_WIDTH = 384  # common for 58mm ESC/POS printers
 def eprint(*args, **kwargs):        # Same as print(), but sends output to stderr instead of stdout for logging/debug messages.
     print(*args, file=sys.stderr, **kwargs) 
 
+def cleanup_keep_last_runs(output_dir: Path, keep: int = 3) -> None:
+    """
+    Keeps only the newest `keep` runs in a flat folder.
+    A run is identified by the filename prefix up to the first '.'.
+    We use '*.final.png' as the run marker.
+    """
+    if keep < 1:
+        keep = 1
 
-def record_wav(seconds: float, wav_path: Optional[str] = None) -> bytes:
-    """Record audio from default mic. Returns WAV bytes (RIFF). Optionally writes to wav_path."""
+    markers = list(output_dir.glob("*.final.png"))
+    if len(markers) <= keep:
+        return
+
+    # newest first by mtime
+    markers.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    # run ids to keep (prefix before first '.')
+    keep_run_ids = {p.name.split(".", 1)[0] for p in markers[:keep]}
+
+    # delete files belonging to older runs
+    for f in output_dir.iterdir():
+        if not f.is_file():
+            continue
+        run_id = f.name.split(".", 1)[0]
+        if run_id and run_id not in keep_run_ids and any(s in f.name for s in [".output.", ".transcription.", ".prompt.", ".generated.", ".final."]):
+            try:
+                f.unlink()
+            except FileNotFoundError:
+                pass
+            except PermissionError:
+                pass
+
+
+def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, float]:
+    """
+    Record audio from the default microphone.
+
+    Returns:
+        (wav_bytes, end_recording_ts)
+        - wav_bytes: WAV file contents (RIFF) as bytes
+        - end_recording_ts: time.perf_counter() timestamp taken immediately
+                            after recording finishes
+    """
     if seconds <= 0:
         raise ValueError("seconds must be > 0")
     if seconds > 30:
         raise ValueError("Maximum recording duration is 30 seconds.")
 
     eprint(f"Recording {seconds:.1f}s @ {SAMPLE_RATE} Hz mono...")
-    audio = sd.rec(int(seconds * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE)
 
-    # simple countdown like your existing script
+    audio = sd.rec(
+        int(seconds * SAMPLE_RATE),
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype=DTYPE,
+    )
+
+    # Countdown (purely cosmetic)
     for remaining in range(int(seconds), 0, -1):
         eprint(f"...{remaining} second(s) remaining...")
         time.sleep(1)
 
+    # Wait until recording completes
     sd.wait()
+
+    # Capture end-of-recording timestamp IMMEDIATELY after audio capture ends
+    end_recording_ts = time.perf_counter()
+
+    # Ensure shape is (samples,)
     audio = np.squeeze(audio)
 
-    # Build WAV bytes in-memory
+    # Build WAV bytes in memory
     bio = BytesIO()
     with wave.open(bio, "wb") as wf:
         wf.setnchannels(CHANNELS)
-        wf.setsampwidth(2)  # int16
+        wf.setsampwidth(2)  # 16-bit PCM
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(audio.tobytes())
 
     wav_bytes = bio.getvalue()
 
+    # Optional debug write
     if wav_path:
         with open(wav_path, "wb") as f:
             f.write(wav_bytes)
 
-    return wav_bytes
+    return wav_bytes, end_recording_ts
 
 
 def transcribe_es(client: OpenAI, wav_bytes: bytes) -> str:
@@ -145,7 +195,7 @@ STYLE (must follow):
 - Simple shapes, soft rounded edges
 - Cheerful, harmless, friendly mood
 - Sticker-like centered composition
-- Plain light background
+- Transparent background (no background), subject only
 
 CONSTRAINTS:
 - No text, letters, numbers, logos, watermarks
@@ -159,15 +209,17 @@ SUBJECT (Spanish transcription; interpret literally but keep it kid-safe):
 
 def generate_image_png_bytes(client: OpenAI, prompt: str, size: str = "1024x1024") -> bytes:
     """Generate image using gpt-image-1. Returns PNG bytes."""
-    img = client.images.generate(
-        model=IMAGE_MODEL,
-        prompt=prompt,
-        size=size,
-        moderation="auto",
-        output_format="png",
-        quality="auto",
-        n=1,
-    )
+img = client.images.generate(
+    model=IMAGE_MODEL,
+    prompt=prompt,
+    size=size,
+    moderation="auto",
+    output_format="png",
+    background="transparent",  # <-- key line
+    quality="high",            # transparency tends to behave better at >= medium
+    n=1,
+)
+
     b64 = img.data[0].b64_json
     return base64.b64decode(b64)
 
@@ -258,7 +310,17 @@ def main():
     parser.add_argument("--pixelate-width", type=int, default=96, help="Downscale width before upscaling (NEAREST) to emphasize pixels; 0 disables")
     parser.add_argument("--debug", action="store_true", help="Write debug artifacts (wav, transcription, prompt, generated png)")
 
+
+    SCRIPT_DIR = Path(__file__).resolve().parent
+    OUTPUT_DIR = SCRIPT_DIR / "output"
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
     args = parser.parse_args()
+
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_prefix = f"{stamp}_{args.out_prefix}"
 
     if not os.getenv("OPENAI_API_KEY"):
         eprint("Error: Set OPENAI_API_KEY environment variable.")
@@ -266,17 +328,22 @@ def main():
 
     client = OpenAI()
 
-    out_wav = f"{args.out_prefix}.output.wav"
-    out_trans = f"{args.out_prefix}.transcription.txt"
-    out_prompt = f"{args.out_prefix}.prompt.txt"
-    out_generated = f"{args.out_prefix}.generated.png"
+    out_wav       = OUTPUT_DIR / f"{run_prefix}.output.wav"
+    out_trans     = OUTPUT_DIR / f"{run_prefix}.transcription.txt"
+    out_prompt    = OUTPUT_DIR / f"{run_prefix}.prompt.txt"
+    out_generated = OUTPUT_DIR / f"{run_prefix}.generated.png"
 
-    out_final_png = f"{args.out_prefix}.final.png"
-    out_bitmap = f"{args.out_prefix}.final.bitmap.bin"
-    out_escpos = f"{args.out_prefix}.final.escpos.bin"
+    out_final_png = OUTPUT_DIR / f"{run_prefix}.final.png"
+    out_bitmap    = OUTPUT_DIR / f"{run_prefix}.final.bitmap.bin"
+    out_escpos    = OUTPUT_DIR / f"{run_prefix}.final.escpos.bin"
+
+
 
     # 1) record
-    wav_bytes = record_wav(args.seconds, wav_path=out_wav if args.debug else None)
+    wav_bytes, end_recording_ts = record_wav(
+    args.seconds,
+    wav_path=str(out_wav) if args.debug else None
+    )
 
     # 2) transcribe (OpenAI call)
     eprint("Transcribing (es)...")
@@ -332,10 +399,15 @@ def main():
     with open(out_escpos, "wb") as f:
         f.write(escpos_bytes)
 
+    cleanup_keep_last_runs(OUTPUT_DIR, keep=3)
+
     print("OK")
     print(f"Saved: {out_final_png}")
     print(f"Saved: {out_bitmap} (raw packed 1-bit rows)")
     print(f"Saved: {out_escpos} (ESC/POS GS v 0 raster command)")
+    elapsed = time.perf_counter() - end_recording_ts
+    print(f"Latency (end of recording → final image): {elapsed:.2f}s")
+
 
 if __name__ == "__main__":
     main()

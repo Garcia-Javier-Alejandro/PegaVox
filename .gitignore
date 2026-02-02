@@ -2,3 +2,5 @@
 .env
 .env.*
 /device/firmware/secrets*.h
+# Ignore Runtime outputs
+/scripts/output/
