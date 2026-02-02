@@ -26,6 +26,12 @@
 import argparse
 import base64
 import os
+
+from dotenv import load_dotenv
+load_dotenv()   # MUST happen before importing OpenAI
+
+from openai import OpenAI
+
 import sys
 import time
 import wave
@@ -37,7 +43,8 @@ import numpy as np
 import sounddevice as sd
 from PIL import Image
 
-from openai import OpenAI
+
+
 
 
 # ----------------------------
