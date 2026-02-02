@@ -53,6 +53,10 @@ SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = "int16"
 
+RECORD_SECONDS = 7.0  # Fixed recording duration
+
+ENABLE_API_MODERATION = False  # When False, use only local heuristic; when True, call API for flagged content
+
 TRANSCRIBE_MODEL = "whisper-1"
 MODERATION_MODEL = "omni-moderation-latest"
 IMAGE_MODEL = "gpt-image-1"
@@ -444,7 +448,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="Audio->Trim->Transcribe(es)->(Conditional)Moderate->Prompt->gpt-image-1->Thermal outputs"
     )
-    parser.add_argument("--seconds", type=float, default=5.0, help="Recording duration in seconds (<=30)")
     parser.add_argument("--out-prefix", type=str, default="run", help="Prefix for output files")
     parser.add_argument("--printer-width", type=int, default=DEFAULT_PRINTER_WIDTH,
                         help="Target printer width in pixels (commonly 384 for 58mm)")
@@ -485,7 +488,7 @@ def main():
 
     # 1) record (local)
     wav_bytes, end_recording_ts, pcm16 = record_wav(
-        args.seconds,
+        RECORD_SECONDS,
         wav_path=str(out_wav) if args.debug else None
     )
 
@@ -525,14 +528,21 @@ def main():
         with open(out_trans, "w", encoding="utf-8") as f:
             f.write(transcription)
 
-    # 3) moderation gate (conditional OpenAI call)
+    # 3) moderation gate (local + conditional API)
     if risky_spanish(transcription):
-        eprint("Heuristic flagged transcription → running moderation check...")
-        if is_flagged(client, transcription):
+        if ENABLE_API_MODERATION:
+            eprint("Local heuristic flagged content → running API moderation check...")
+            if is_flagged(client, transcription):
+                print("flagged content, prompt cancelled")
+                sys.exit(1)
+            else:
+                eprint("API moderation passed → proceeding")
+        else:
+            eprint("Local heuristic flagged content → cancelling (API moderation disabled)")
             print("flagged content, prompt cancelled")
             sys.exit(1)
     else:
-        eprint("Heuristic clean → skipping moderation (image endpoint still uses moderation=auto)")
+        eprint("Local heuristic clean → proceeding (image endpoint still uses moderation=auto)")
 
     # 4) prompt (local)
     prompt = build_pixel_art_prompt(transcription)
