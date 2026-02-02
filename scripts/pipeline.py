@@ -25,6 +25,7 @@
 
 import argparse
 import base64
+import unicodedata
 import os
 
 from dotenv import load_dotenv
@@ -58,6 +59,57 @@ IMAGE_MODEL = "gpt-image-1"
 
 DEFAULT_PRINTER_WIDTH = 384  # common for 58mm ESC/POS printers
 
+SUSPICIOUS_TERMS_ES = [
+    # Violence / weapons
+    "arma", "armas", "cuchillo", "cuchillos", "pistola", "pistolas",
+    "revolver", "fusil", "rifle", "escopeta", "ametralladora",
+    "bala", "balas", "disparo", "disparar", "tiroteo",
+    "bomba", "explosivo", "granada", "detonar",
+    "asesinar", "asesinato", "matar", "muerte", "morir",
+    "violencia", "violento", "ataque", "atacar",
+    "sangre", "sangriento", "herida", "herido",
+    "tortura", "torturar", "secuestrar", "secuestro",
+    "terror", "terrorista","ácido"
+
+    # Self-harm
+    "suicidio", "suicidarse", "autolesion", "autolesionarse",
+
+    # Sexual content (general)
+    "sexo", "sexual", "desnudo", "desnuda", "desnudez",
+    "pornografia", "porno", "erotico", "erotica",
+    "orgasmo", "masturbacion", "masturbar",
+    "prostitucion", "prostituta", "prostituto",
+    "violacion", "violar", "abuso", "abuso sexual",
+    "teta", "tetas", "culo", "culos", "pene", "penes",
+    "concha", "cajeta"
+
+    # Drugs / substances
+    "droga", "drogas", "coca", "cocaina", "heroina",
+    "marihuana", "porro", "pastis, "lsd", "extasis",
+    "anfetamina", "metanfetamina", "opio", "opiaceo",
+    "sobredosis",
+
+    # Hate / extremism
+    "odio", "odiar", "racista", "racismo", "xenofobia",
+    "nazi", "fascista", "extremista","político", "política",
+    "radical", "judía", "judío", "musulmán", "musulmana",
+    "mohamad", "cristiano", "cristiana", "islamista","mahoma", 
+    "puto", "puta", "maricón", "maricona","pedofilia", "pedófilo", "pedófila",
+
+    # Crime
+    "robo", "robar", "asalto", "delito", "criminal",
+    "mafioso", "sicario", "pandilla",
+
+    #puteadas-lunfardo
+    "la concha de tu madre", "hijo de puta", "hijo de mil puta", "me cago en dios", 
+    "coger", "cogerla", "choto", "chota", "forro", "gil", "boludo", "pelotudo", "pija", 
+    "pendejo", "zarpado", "andate a la mierda", "andate al carajo", "la re puta madre que te parió", 
+    "la concha de la lora", "boludo", "pelotudo", "boluda", "pelotuda", "forro", "forra", "gil", "salame", 
+    "pajero", "pajera", "chupapija", "chupapijas", "chupala", "chupamelo", "verga", "vergas"
+
+]
+
+
 
 # ----------------------------
 # Helpers
@@ -65,6 +117,30 @@ DEFAULT_PRINTER_WIDTH = 384  # common for 58mm ESC/POS printers
 
 def eprint(*args, **kwargs):        # Same as print(), but sends output to stderr instead of stdout for logging/debug messages.
     print(*args, file=sys.stderr, **kwargs) 
+
+def _fold_es(text: str) -> str:
+    """
+    Normalize Spanish text for robust substring matching.
+    """
+    text = text.casefold()
+    # Decompose accented characters into base + diacritic
+    text = unicodedata.normalize("NFKD", text)
+    # Strip diacritic marks, keep base characters only
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
+
+def risky_spanish(text: str) -> bool:
+    """
+    Cheap heuristic to decide whether a Spanish transcription
+    *might* contain unsafe content.
+
+    Returns:
+        True  -> run full moderation check (OpenAI call)
+        False -> skip moderation, rely on image endpoint safety
+    """
+    normalized = _fold_es(text)
+    # Check if any suspicious term appears as a substring
+    return any(term in normalized for term in SUSPICIOUS_TERMS_ES)
 
 def cleanup_keep_last_runs(output_dir: Path, keep: int = 3) -> None:
     """
@@ -154,6 +230,63 @@ def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, f
 
     return wav_bytes, end_recording_ts
 
+def trim_silence_pcm16(
+    pcm16: np.ndarray,
+    sample_rate: int,
+    frame_ms: int = 30,
+    threshold_db: float = -35.0,
+    pad_ms: int = 120,
+) -> np.ndarray:
+    """
+    Trim leading/trailing silence from int16 mono PCM using simple RMS energy.
+
+    pcm16: 1D np.int16 array
+    threshold_db: frames above this RMS dBFS are considered 'voice'
+    pad_ms: keep a bit of audio before/after detected voice to avoid clipping words
+
+    Returns: trimmed np.int16 array (may return original if no voice detected)
+    """
+    if pcm16.ndim != 1:
+        pcm16 = np.squeeze(pcm16)
+    if pcm16.size == 0:
+        return pcm16
+
+    frame_len = max(1, int(sample_rate * frame_ms / 1000))
+    n_frames = int(np.ceil(pcm16.size / frame_len))
+
+    # Pad to a whole number of frames
+    padded = np.zeros(n_frames * frame_len, dtype=np.int16)
+    padded[: pcm16.size] = pcm16
+
+    # Compute RMS per frame in dBFS (0 dBFS is max int16)
+    max_i16 = 32768.0
+    rms_db = np.empty(n_frames, dtype=np.float32)
+
+    for i in range(n_frames):
+        frame = padded[i * frame_len : (i + 1) * frame_len].astype(np.float32)
+        rms = np.sqrt(np.mean(frame * frame)) / max_i16
+        # Avoid log(0)
+        rms_db[i] = 20.0 * np.log10(max(rms, 1e-8))
+
+    voiced = rms_db > threshold_db
+    if not np.any(voiced):
+        # No detected voice; return original (or return empty if you prefer)
+        return pcm16
+
+    first = int(np.argmax(voiced))
+    last = int(len(voiced) - 1 - np.argmax(voiced[::-1]))
+
+    pad_frames = int(np.ceil((pad_ms / 1000) * sample_rate / frame_len))
+    start_f = max(0, first - pad_frames)
+    end_f = min(n_frames - 1, last + pad_frames)
+
+    start = start_f * frame_len
+    end = (end_f + 1) * frame_len
+
+    trimmed = padded[start:end]
+    # Remove padding beyond original length when trimming includes the tail padding
+    trimmed = trimmed[: max(0, min(trimmed.size, pcm16.size - start + (end - pcm16.size if end > pcm16.size else 0)))]
+    return trimmed
 
 def transcribe_es(client: OpenAI, wav_bytes: bytes) -> str:
     """Transcribe Spanish audio. Returns text."""
@@ -200,25 +333,26 @@ STYLE (must follow):
 CONSTRAINTS:
 - No text, letters, numbers, logos, watermarks
 - No realism, no photographic details, no complex shading or gradients
-- No violence, weapons, blood, fear, drugs, or adult themes
+- Flat fills, hard edges, no drop shadow, no glow, no vignette
+- No violence, weapons, blood, fear, drugs, sex, or adult themes
 
 SUBJECT (Spanish transcription; interpret literally but keep it kid-safe):
 {subject_es}
 """.strip()
 
 
-def generate_image_png_bytes(client: OpenAI, prompt: str, size: str = "1024x1024") -> bytes:
+def generate_image_png_bytes(client: OpenAI, prompt: str, size: str = "512x512") -> bytes:
     """Generate image using gpt-image-1. Returns PNG bytes."""
-img = client.images.generate(
-    model=IMAGE_MODEL,
-    prompt=prompt,
-    size=size,
-    moderation="auto",
-    output_format="png",
-    background="transparent",  # <-- key line
-    quality="high",            # transparency tends to behave better at >= medium
-    n=1,
-)
+    img = client.images.generate(
+        model=IMAGE_MODEL,
+        prompt=prompt,
+        size=size,
+        moderation="auto",
+        output_format="png",
+        background="transparent",  # <-- key line
+        quality="medium",            # transparency tends to behave better at >= medium
+        n=1,
+    )
 
     b64 = img.data[0].b64_json
     return base64.b64decode(b64)
@@ -354,11 +488,14 @@ def main():
         with open(out_trans, "w", encoding="utf-8") as f:
             f.write(transcription)
 
-    # 3) moderation gate (OpenAI call)
-    eprint("Moderating transcription...")
-    if is_flagged(client, transcription):
-        print("flagged content, prompt cancelled")
-        sys.exit(1)
+    # 3) moderation gate (conditional OpenAI call)
+    if looks_risky_spanish(transcription):
+        eprint("Heuristic flagged transcription → running moderation check...")
+        if is_flagged(client, transcription):
+            print("flagged content, prompt cancelled")
+            sys.exit(1)
+    else:
+        eprint("Heuristic clean → skipping moderation (image endpoint still uses moderation=auto)")
 
     # 4) prompt (local)
     prompt = build_pixel_art_prompt(transcription)
@@ -374,7 +511,11 @@ def main():
             f.write(png_bytes)
 
     # 6) postprocess for printer
-    img = Image.open(BytesIO(png_bytes)).convert("RGB")
+    img_rgba = Image.open(BytesIO(png_bytes)).convert("RGBA")
+
+    # Composite transparency over a pure white background (thermal-paper white)
+    white_bg = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+    img = Image.alpha_composite(white_bg, img_rgba).convert("RGB")
 
     # Resize to printer width
     img = resize_to_width(img, args.printer_width)
