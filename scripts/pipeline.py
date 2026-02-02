@@ -175,15 +175,16 @@ def cleanup_keep_last_runs(output_dir: Path, keep: int = 3) -> None:
                 pass
 
 
-def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, float]:
+def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, float, np.ndarray]:
     """
     Record audio from the default microphone.
 
     Returns:
-        (wav_bytes, end_recording_ts)
-        - wav_bytes: WAV file contents (RIFF) as bytes
+        (wav_bytes, end_recording_ts, pcm16)
+        - wav_bytes: WAV file contents (RIFF) as bytes (16 kHz, mono, 16-bit PCM)
         - end_recording_ts: time.perf_counter() timestamp taken immediately
                             after recording finishes
+        - pcm16: 1D numpy array of int16 samples (mono)
     """
     if seconds <= 0:
         raise ValueError("seconds must be > 0")
@@ -196,7 +197,7 @@ def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, f
         int(seconds * SAMPLE_RATE),
         samplerate=SAMPLE_RATE,
         channels=CHANNELS,
-        dtype=DTYPE,
+        dtype=DTYPE,  # should be 'int16'
     )
 
     # Countdown (purely cosmetic)
@@ -210,25 +211,28 @@ def record_wav(seconds: float, wav_path: Optional[str] = None) -> tuple[bytes, f
     # Capture end-of-recording timestamp IMMEDIATELY after audio capture ends
     end_recording_ts = time.perf_counter()
 
-    # Ensure shape is (samples,)
-    audio = np.squeeze(audio)
+    # Ensure shape is (samples,) and dtype is int16
+    pcm16 = np.squeeze(audio)
+    if pcm16.dtype != np.int16:
+        pcm16 = pcm16.astype(np.int16, copy=False)
 
-    # Build WAV bytes in memory
+    # Build WAV bytes in memory from pcm16
     bio = BytesIO()
     with wave.open(bio, "wb") as wf:
         wf.setnchannels(CHANNELS)
         wf.setsampwidth(2)  # 16-bit PCM
         wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(audio.tobytes())
+        wf.writeframes(pcm16.tobytes())
 
     wav_bytes = bio.getvalue()
 
-    # Optional debug write
+    # Optional debug write (writes the untrimmed recording)
     if wav_path:
         with open(wav_path, "wb") as f:
             f.write(wav_bytes)
 
-    return wav_bytes, end_recording_ts
+    return wav_bytes, end_recording_ts, pcm16
+
 
 def trim_silence_pcm16(
     pcm16: np.ndarray,
@@ -437,13 +441,21 @@ def escpos_gs_v_0(data: bytes, bytes_per_row: int, height: int) -> bytes:
 # ----------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Audio->Transcribe(es)->Moderate->Prompt->gpt-image-1->Thermal outputs")
+    parser = argparse.ArgumentParser(
+        description="Audio->Trim->Transcribe(es)->(Conditional)Moderate->Prompt->gpt-image-1->Thermal outputs"
+    )
     parser.add_argument("--seconds", type=float, default=5.0, help="Recording duration in seconds (<=30)")
     parser.add_argument("--out-prefix", type=str, default="run", help="Prefix for output files")
-    parser.add_argument("--printer-width", type=int, default=DEFAULT_PRINTER_WIDTH, help="Target printer width in pixels (commonly 384 for 58mm)")
-    parser.add_argument("--pixelate-width", type=int, default=96, help="Downscale width before upscaling (NEAREST) to emphasize pixels; 0 disables")
-    parser.add_argument("--debug", action="store_true", help="Write debug artifacts (wav, transcription, prompt, generated png)")
-
+    parser.add_argument("--printer-width", type=int, default=DEFAULT_PRINTER_WIDTH,
+                        help="Target printer width in pixels (commonly 384 for 58mm)")
+    parser.add_argument("--pixelate-width", type=int, default=96,
+                        help="Downscale width before upscaling (NEAREST) to emphasize pixels; 0 disables")
+    parser.add_argument("--debug", action="store_true",
+                        help="Write debug artifacts (wav, trimmed wav, transcription, prompt, generated png)")
+    parser.add_argument("--trim-threshold-db", type=float, default=-35.0,
+                        help="Silence trim threshold in dBFS (higher = trims more aggressively)")
+    parser.add_argument("--trim-pad-ms", type=int, default=120,
+                        help="Padding around detected voice in ms (higher = less clipping)")
 
     SCRIPT_DIR = Path(__file__).resolve().parent
     OUTPUT_DIR = SCRIPT_DIR / "output"
@@ -452,7 +464,6 @@ def main():
     args = parser.parse_args()
 
     from datetime import datetime
-
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_prefix = f"{stamp}_{args.out_prefix}"
 
@@ -462,26 +473,52 @@ def main():
 
     client = OpenAI()
 
-    out_wav       = OUTPUT_DIR / f"{run_prefix}.output.wav"
-    out_trans     = OUTPUT_DIR / f"{run_prefix}.transcription.txt"
-    out_prompt    = OUTPUT_DIR / f"{run_prefix}.prompt.txt"
-    out_generated = OUTPUT_DIR / f"{run_prefix}.generated.png"
+    out_wav         = OUTPUT_DIR / f"{run_prefix}.output.wav"
+    out_wav_trimmed = OUTPUT_DIR / f"{run_prefix}.trimmed.wav"
+    out_trans       = OUTPUT_DIR / f"{run_prefix}.transcription.txt"
+    out_prompt      = OUTPUT_DIR / f"{run_prefix}.prompt.txt"
+    out_generated   = OUTPUT_DIR / f"{run_prefix}.generated.png"
 
-    out_final_png = OUTPUT_DIR / f"{run_prefix}.final.png"
-    out_bitmap    = OUTPUT_DIR / f"{run_prefix}.final.bitmap.bin"
-    out_escpos    = OUTPUT_DIR / f"{run_prefix}.final.escpos.bin"
+    out_final_png   = OUTPUT_DIR / f"{run_prefix}.final.png"
+    out_bitmap      = OUTPUT_DIR / f"{run_prefix}.final.bitmap.bin"
+    out_escpos      = OUTPUT_DIR / f"{run_prefix}.final.escpos.bin"
 
-
-
-    # 1) record
-    wav_bytes, end_recording_ts = record_wav(
-    args.seconds,
-    wav_path=str(out_wav) if args.debug else None
+    # 1) record (local)
+    wav_bytes, end_recording_ts, pcm16 = record_wav(
+        args.seconds,
+        wav_path=str(out_wav) if args.debug else None
     )
 
-    # 2) transcribe (OpenAI call)
+    # 1.5) trim silence BEFORE transcription (local, cost-saving)
+    pcm16_trim = trim_silence_pcm16(
+        pcm16,
+        sample_rate=SAMPLE_RATE,
+        frame_ms=30,
+        threshold_db=args.trim_threshold_db,
+        pad_ms=args.trim_pad_ms,
+    )
+
+    orig_sec = len(pcm16) / SAMPLE_RATE
+    trim_sec = len(pcm16_trim) / SAMPLE_RATE
+    eprint(f"Audio length: original {orig_sec:.2f}s -> trimmed {trim_sec:.2f}s")
+
+    # Rebuild WAV bytes from trimmed PCM and send ONLY that to Whisper
+    bio = BytesIO()
+    with wave.open(bio, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)  # 16-bit PCM
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(pcm16_trim.tobytes())
+    wav_bytes_for_asr = bio.getvalue()
+
+    # Optional debug write of trimmed audio
+    if args.debug:
+        with open(out_wav_trimmed, "wb") as f:
+            f.write(wav_bytes_for_asr)
+
+    # 2) transcribe (OpenAI call) — now uses trimmed audio bytes
     eprint("Transcribing (es)...")
-    transcription = transcribe_es(client, wav_bytes)
+    transcription = transcribe_es(client, wav_bytes_for_asr)
     eprint("Transcription:", transcription)
 
     if args.debug:
@@ -489,7 +526,7 @@ def main():
             f.write(transcription)
 
     # 3) moderation gate (conditional OpenAI call)
-    if looks_risky_spanish(transcription):
+    if risky_spanish(transcription):
         eprint("Heuristic flagged transcription → running moderation check...")
         if is_flagged(client, transcription):
             print("flagged content, prompt cancelled")
@@ -510,10 +547,10 @@ def main():
         with open(out_generated, "wb") as f:
             f.write(png_bytes)
 
-    # 6) postprocess for printer
+    # 6) postprocess for printer (local)
     img_rgba = Image.open(BytesIO(png_bytes)).convert("RGBA")
 
-    # Composite transparency over a pure white background (thermal-paper white)
+    # Composite transparency over pure white (prevents “transparent becomes black” issue)
     white_bg = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
     img = Image.alpha_composite(white_bg, img_rgba).convert("RGB")
 
@@ -540,14 +577,17 @@ def main():
     with open(out_escpos, "wb") as f:
         f.write(escpos_bytes)
 
+    # Keep output directory tidy
     cleanup_keep_last_runs(OUTPUT_DIR, keep=3)
 
     print("OK")
     print(f"Saved: {out_final_png}")
     print(f"Saved: {out_bitmap} (raw packed 1-bit rows)")
     print(f"Saved: {out_escpos} (ESC/POS GS v 0 raster command)")
+
     elapsed = time.perf_counter() - end_recording_ts
     print(f"Latency (end of recording → final image): {elapsed:.2f}s")
+
 
 
 if __name__ == "__main__":
