@@ -3,8 +3,10 @@
 # End-to-end: record audio -> transcribe (es) -> moderation gate -> prompt -> gpt-image-1 -> 58mm printer outputs
 #
 # Usage:
-#   python pipeline.py --seconds 5 --out-prefix run1
-#   python pipeline.py --seconds 5 --out-prefix run1 --debug
+#   python pipeline.py --out-prefix run1
+#   python pipeline.py --out-prefix run1 --debug
+#
+# Recording duration is fixed at 7 seconds (see RECORD_SECONDS constant)
 #
 # Outputs (default):
 #   run1.final.png          (384px wide, 1-bit dithered)
@@ -76,7 +78,7 @@ SUSPICIOUS_TERMS_ES = [
     "terror", "terrorista","ácido"
 
     # Self-harm
-    "suicidio", "suicidarse", "autolesion", "autolesionarse",
+    "suicidio", "suicidarse", "autolesion", "autolesionarse", "cortar", "cortarse", "anorexia", "bulimia",
 
     # Sexual content (general)
     "sexo", "sexual", "desnudo", "desnuda", "desnudez",
@@ -89,9 +91,9 @@ SUSPICIOUS_TERMS_ES = [
 
     # Drugs / substances
     "droga", "drogas", "coca", "cocaina", "heroina",
-    "marihuana", "porro", "pastis, "lsd", "extasis",
-    "anfetamina", "metanfetamina", "opio", "opiaceo",
-    "sobredosis",
+    "marihuana", "porro", "porros", "pasti", "pastis", "lsd", "extasis",
+    "anfetamina", "metanfetamina", "opio", "opiaceo", "merca", "crack",
+    "fumarse", "inyectarse", "colocarse","fumar", "falopa", "falopas", "sobredosis",
 
     # Hate / extremism
     "odio", "odiar", "racista", "racismo", "xenofobia",
@@ -107,9 +109,9 @@ SUSPICIOUS_TERMS_ES = [
     #puteadas-lunfardo
     "la concha de tu madre", "hijo de puta", "hijo de mil puta", "me cago en dios", 
     "coger", "cogerla", "choto", "chota", "forro", "gil", "boludo", "pelotudo", "pija", 
-    "pendejo", "zarpado", "andate a la mierda", "andate al carajo", "la re puta madre que te parió", 
+    "pendejo", "pendeja", "zarpado", "zarpada", "mierda", "carajo", "cagar", "cago", "parió", 
     "la concha de la lora", "boludo", "pelotudo", "boluda", "pelotuda", "forro", "forra", "gil", "salame", 
-    "pajero", "pajera", "chupapija", "chupapijas", "chupala", "chupamelo", "verga", "vergas"
+    "pajero", "pajera", "chupapija", "chupapijas", "chupala", "chupamelo", "chupa", "verga", "vergas"
 
 ]
 

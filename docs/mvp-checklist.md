@@ -1,3 +1,4 @@
+THE MVP IS DONE!
 # PegaVox MVP Milestone Checklist
 
 This checklist defines the practical, incremental steps to build a minimal working prototype of PegaVox: a voice-driven sticker printer. The goal is to achieve an end-to-end loop: voice input → transcription → prompt → image → output (file/display).
