@@ -4,7 +4,8 @@
 
 This firmware implements the embedded controller for the PegaVox voice-driven sticker printer.
 
-**Language**: C++ (ESP-IDF with C++ support)  
+**Language**: C++ (ESP-IDF with C++ support via PlatformIO)  
+**Build System**: PlatformIO  
 **Current Phase**: Phase 2 - Core Embedded Firmware  
 **Test Status**: Button → Print "Hello world" via UART thermal printer
 
@@ -14,8 +15,12 @@ The firmware uses a class-based architecture for maintainability and future expa
 
 - **`ThermalPrinter`**: ESC/POS thermal printer driver (UART)
 - **`Button`**: Debounced button handler with interrupt support
-- **`LED`**: Status indicator control
 - **`main.cpp`**: Application entry point and initialization
+
+**Future Components (Not Yet Implemented):**
+- **OLED Display**: SSD1327 I2C driver (GPIO 41/42) for status display
+- **I2S Microphone**: INMP441 audio capture (GPIO 4-6) for voice input
+- **Wi-Fi Manager**: Network connectivity and provisioning
 
 ## Hardware Requirements
 
@@ -40,46 +45,45 @@ See [../../docs/pinout.md](../../docs/pinout.md) for complete pin mapping.
 
 ### Prerequisites
 
-1. Install ESP-IDF v5.0 or later:
-   ```bash
-   # Follow official guide: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/
-   ```
-
-2. Set up ESP-IDF environment:
-   ```bash
-   # Linux/macOS
-   . $HOME/esp/esp-idf/export.sh
-   
-   # Windows (Command Prompt)
-   %userprofile%\esp\esp-idf\export.bat
-   
-   # Windows (PowerShell)
-   .$HOME\esp\esp-idf\export.ps1
-   ```
+1. Install VS Code
+2. Install **PlatformIO IDE** extension (platformio.ideaspeed)
+3. Connect ESP32-S3 board via USB
 
 ### Build
 
+**Option 1: Via PlatformIO UI**
+- Click PlatformIO icon (left sidebar)
+- Click "Build" under the env
+
+**Option 2: Via Terminal**
 ```bash
 cd device/firmware
-idf.py set-target esp32s3
-idf.py build
+pio run
 ```
 
 ### Flash
 
+**Option 1: Via PlatformIO UI**
+- Connect ESP32-S3 via USB
+- Click "Upload" in PlatformIO sidebar
+
+**Option 2: Via Terminal**
 ```bash
-idf.py -p COM3 flash monitor
+pio run --target upload
 ```
 
-Replace `COM3` with your serial port (Linux: `/dev/ttyUSB0`, macOS: `/dev/cu.usbserial-*`)
+### Monitor
 
-### Monitor Only
+**Option 1: Via PlatformIO UI**
+- Click "Monitor" in PlatformIO sidebar
 
+**Option 2: Via Terminal**
 ```bash
-idf.py -p COM3 monitor
+pio device monitor  # or
+pio run --target monitor
 ```
 
-To exit monitor: `Ctrl+]`
+To exit monitor: `Ctrl+C`
 
 ## Testing
 
@@ -88,8 +92,8 @@ To exit monitor: `Ctrl+]`
 3. Ensure printer and ESP32 share common ground
 4. Power on printer (dedicated 5V supply recommended)
 5. Press button on GPIO 12
-6. LED on GPIO 15 should light during printing
-7. Printer should output "Hello world" and "PegaVox Test Print"
+6. Printer should output "Hello world", "PegaVox Test Print", and "C++ Edition"
+7. Check serial monitor for confirmation logs
 
 ## Thermal Printer Configuration
 
@@ -106,7 +110,7 @@ To exit monitor: `Ctrl+]`
 - 38400
 - 115200
 
-If your printer uses a different baud rate, modify `UART_BAUD_RATE` in `main/main.c`.
+If your printer uses a different baud rate, modify `UART_BAUD_RATE` in [src/main.cpp](src/main.cpp).
 
 ## Troubleshooting
 
@@ -125,18 +129,21 @@ If your printer uses a different baud rate, modify `UART_BAUD_RATE` in `main/mai
 3. Check debounce logs in serial monitor
 4. Internal pull-up is enabled, no external resistor needed
 
-### LED Not Lighting
+### Serial Monitor
 
-1. Verify LED anode → GPIO 15, cathode → GND (via current-limiting resistor)
-2. Use 220Ω-1kΩ resistor in series with LED
-3. Check if LED lights during startup blink sequence (3 blinks)
+Use the PlatformIO monitor to see debug logs:
+```
+PegaVox Firmware - C++ Edition
+Press button to print 'Hello world'
+Initialization complete. Ready to print!
+```
 
-### Print Quality Issues
-
-1. Check printer paper is thermal paper (heat-sensitive coating)
-2. Ensure print head is clean
-3. Adjust darkness/heat settings if your printer supports it
-4. Some printers require ESC/POS configuration commands
+When button is pressed:
+```
+Button pressed
+Button pressed! Printing...
+Print complete!
+```
 
 ## Code Structure
 
@@ -161,13 +168,13 @@ button.setCallback([]() {
 xTaskCreate(buttonTask, "button", 2048, &button, 10, nullptr);
 ```
 
-### LED Class
+### Future: OLED Display Driver (Phase 3+)
 
 ```cpp
-LED led(GPIO_NUM_15);
-led.begin();
-led.on();
-led.blink(3, 100);  // Blink 3 times, 100ms each
+// Planned structure:
+// OLED oled(GPIO_NUM_41, GPIO_NUM_42);  // I2C SDA, SCL
+// oled.begin();
+// oled.println("Ready to print");
 ```
 
 ## Next Steps (Phase 2 Continuation)
@@ -185,38 +192,46 @@ led.blink(3, 100);  // Blink 3 times, 100ms each
 ```
 firmware/
 ├── CMakeLists.txt              # Root CMake configuration
-├── sdkconfig.defaults          # Default ESP-IDF settings
-├── README.md                   # This file
-├── secrets_example.h           # Template for Wi-Fi credentials (future)
-├── secrets.h                   # Actual credentials (gitignored, future)
-└── main/
-    ├── CMakeLists.txt          # Main component CMake
-    ├── main.cpp                # Application entry point
-    ├── ThermalPrinter.hpp      # Printer driver header
-    ├── ThermalPrinter.cpp      # Printer driver implementation
-    ├── Button.hpp              # Button handler header
-    ├── Button.cpp              # Button handler implementation
-    ├── LED.hpp                 # LED control header
-    └── LED.cpp                 # LED control implementation
+├── platformio.ini          # PlatformIO project configuration
+├── README.md               # This file
+├── src/
+│   └── main.cpp            # Application entry point
+├── include/
+│   ├── ThermalPrinter.hpp
+│   ├── Button.hpp
+│   └── LED.hpp
+├── lib/
+│   ├── ThermalPrinter/
+│   │   ├── ThermalPrinter.cpp
+│   │   └── library.json
+│   ├── Button/
+│   │   ├── Button.cpp
+│   │   └── library.json
+│   └── LED/
+│       ├── LED.cpp
+│       └── library.json
+├── .gitignore
+└── secrets_example.hpp     # Template for secrets
 ```
 
-## Why Two CMakeLists.txt Files?
+**PlatformIO Structure Explained:**
 
-ESP-IDF uses a component-based build system:
+- **`platformio.ini`**: Project configuration
+  - Specifies board, platform, framework, compiler flags
+  - Defines serial monitor speed
+  - Configures source/include/library directories
 
-1. **Root CMakeLists.txt** (`firmware/CMakeLists.txt`):
-   - Defines the project name
-   - Includes ESP-IDF build system
-   - Required for all ESP-IDF projects
+- **`src/`**: Source files (must be `src/` for PlatformIO)
+  - `main.cpp`: Entry point with `app_main()`
 
-2. **Component CMakeLists.txt** (`firmware/main/CMakeLists.txt`):
-   - Registers source files (`.cpp`, `.c`)
-   - Specifies include directories
-   - Each component (folder) needs one
-   - `main/` is the primary application component
+- **`include/`**: Headers included by `src/`
+  - Class interfaces (.hpp files)
+  - Automatically added to compiler include path
 
-This structure allows you to add more components later (e.g., `components/wifi_manager/`, `components/audio_capture/`).
-
+- **`lib/`**: Internal libraries
+  - Each folder is a separate library component
+  - `library.json` declares library metadata
+  - Automatically compiled and linked by PlatformIO
 ## License
 
 See project root LICENSE file.

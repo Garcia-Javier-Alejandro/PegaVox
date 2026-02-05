@@ -258,21 +258,22 @@ PegaVox/
 │   └── tests/
 ├── device/
 │   ├── firmware/          (ESP-IDF / ESP32-S3 code – ✅ Phase 2 test)
-│   │   ├── main/
-│   │   │   ├── main.cpp            (App entry point: button → print flow)
+│   │   ├── src/
+│   │   │   └── main.cpp            (App entry point: button → print flow)
+│   │   ├── include/
 │   │   │   ├── ThermalPrinter.hpp  (ESC/POS printer driver interface)
-│   │   │   ├── ThermalPrinter.cpp  (ESC/POS printer driver implementation)
-│   │   │   ├── Button.hpp          (Debounced button handler interface)
-│   │   │   ├── Button.cpp          (Debounced button handler implementation)
-│   │   │   ├── LED.hpp             (Status LED interface)
-│   │   │   ├── LED.cpp             (Status LED implementation)
-│   │   │   └── CMakeLists.txt      (Component build config for firmware)
-│   │   ├── CMakeLists.txt          (Project build config for ESP-IDF)
-│   │   ├── sdkconfig.defaults      (Default ESP-IDF settings)
+│   │   │   └── Button.hpp          (Debounced button handler interface)
+│   │   ├── lib/
+│   │   │   ├── ThermalPrinter/
+│   │   │   │   ├── ThermalPrinter.cpp  (Printer driver implementation)
+│   │   │   │   └── library.json        (Library metadata)
+│   │   │   └── Button/
+│   │   │       ├── Button.cpp          (Button handler implementation)
+│   │   │       └── library.json
+│   │   ├── platformio.ini          (PlatformIO project config)
 │   │   ├── README.md               (Firmware build and test instructions)
-│   │   ├── .gitignore              (Ignore ESP-IDF build artifacts)
-│   │   ├── secrets_example.h
-│   │   └── secrets.h
+│   │   ├── .gitignore              (Ignore build artifacts)
+│   │   └── secrets_example.hpp     (Template for Wi-Fi credentials)
 │   └── hardware/          (Schematics, PCB – TODO)
 ├── scripts/
 │   ├── pipeline.py        (PC end-to-end demo – ✅ working)

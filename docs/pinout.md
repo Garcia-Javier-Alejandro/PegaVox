@@ -16,10 +16,10 @@
 | OLED SCL      | 42   | I2C clock (SSD1327)                      |
 | **User I/O**  |      |                                          |
 | Button        | 12   | Active-low, internal pull-up enabled     |
-| LED           | 15   | Status indicator (active-high)           |
 | **Available** |      |                                          |
 | Spare         | 13   | Reserved for future expansion            |
 | Spare         | 14   | Reserved for future expansion            |
+| Spare         | 15   | Reserved for future expansion            |
 | Spare         | 16   | Reserved for future expansion            |
 
 ## Pin Configuration Details
@@ -55,6 +55,7 @@
 - **Speed**: 400 kHz (Fast Mode)
 - **Pull-ups**: 4.7kΩ recommended on SDA and SCL lines
 - **Display**: 128x128 pixels, 4-bit grayscale
+- **Status**: Planned for Phase 3 (OLED display driver not yet implemented)
 - **Notes**:
   - SDA (data): GPIO 41
   - SCL (clock): GPIO 42
@@ -132,17 +133,18 @@ All components must share a common ground:
 
 ## Spare Pins (Future Expansion)
 
-Three spare GPIOs are reserved for future features:
+Four spare GPIOs are reserved for future features:
 
 - **GPIO 13**: Available for expansion
 - **GPIO 14**: Available for expansion
+- **GPIO 15**: Available for expansion (previously used for status LED, now repurposed)
 - **GPIO 16**: Available for expansion
 
 Potential uses:
 - Wi-Fi provisioning button (long-press reset)
 - External storage (SD card SPI)
-- Additional status LEDs (RGB or multi-color)
-- Buzzer/speaker for audio feedback
+- Additional status indicators (RGB LED ring, buzzer, etc.)
+- Secondary UART for debugging
 - NFC reader for user identification
 
 ## GPIO Restrictions (ESP32-S3)
@@ -178,7 +180,7 @@ ESP32-S3 (Top View)
 │  GPIO 12 ────────── │ Button (pull-up)
 │  GPIO 13 ────────── │ Spare
 │  GPIO 14 ────────── │ Spare
-│  GPIO 15 ────────── │ LED
+│  GPIO 15 ────────── │ Spare
 │  GPIO 16 ────────── │ Spare
 │  GPIO 17 ────────── │ Printer TX
 │  GPIO 18 ────────── │ Printer RX
@@ -203,6 +205,7 @@ ESP32-S3 (Top View)
 
 | Date       | Version | Changes                          |
 |------------|---------|----------------------------------|
+| 2026-02-05 | 1.1     | Removed LED (GPIO 15), plan for OLED display |
 | 2026-02-05 | 1.0     | Initial pinout definition        |
 
 ---

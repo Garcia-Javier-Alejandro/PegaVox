@@ -1,0 +1,9 @@
+{
+  "name": "ThermalPrinter",
+  "version": "1.0.0",
+  "description": "ESC/POS thermal printer driver for UART",
+  "keywords": "thermal, printer, uart, escpos",
+  "authors": {
+    "name": "PegaVox Team"
+  }
+}

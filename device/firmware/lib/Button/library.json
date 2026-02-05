@@ -1,0 +1,9 @@
+{
+  "name": "Button",
+  "version": "1.0.0",
+  "description": "Debounced button handler with interrupt support",
+  "keywords": "button, gpio, interrupt, debounce",
+  "authors": {
+    "name": "PegaVox Team"
+  }
+}

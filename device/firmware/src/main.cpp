@@ -11,7 +11,6 @@
 #include "esp_log.h"
 #include "ThermalPrinter.hpp"
 #include "Button.hpp"
-#include "LED.hpp"
 
 // Pin definitions
 #define PRINTER_TX_PIN      GPIO_NUM_17
@@ -22,20 +21,16 @@
 #define OLED_SDA_PIN        GPIO_NUM_41
 #define OLED_SCL_PIN        GPIO_NUM_42
 #define BUTTON_PIN          GPIO_NUM_12
-#define LED_PIN             GPIO_NUM_15
 
 static const char *TAG = "PegaVox";
 
 // Global objects
 static ThermalPrinter* printer = nullptr;
-static LED* statusLED = nullptr;
 
 // Button press handler
 void onButtonPress()
 {
     ESP_LOGI(TAG, "Button pressed! Printing...");
-    
-    statusLED->on();
     
     printer->reset();
     printer->printLine("Hello world");
@@ -45,8 +40,6 @@ void onButtonPress()
     printer->cutPaper();
     
     ESP_LOGI(TAG, "Print complete!");
-    
-    statusLED->off();
 }
 
 // Button task wrapper
@@ -60,13 +53,6 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "PegaVox Firmware - C++ Edition");
     ESP_LOGI(TAG, "Press button to print 'Hello world'");
-    
-    // Initialize LED
-    statusLED = new LED(LED_PIN);
-    if (!statusLED->begin()) {
-        ESP_LOGE(TAG, "Failed to initialize LED");
-        return;
-    }
     
     // Initialize thermal printer
     printer = new ThermalPrinter(UART_NUM_1, PRINTER_TX_PIN, PRINTER_RX_PIN, 9600);
@@ -88,7 +74,4 @@ extern "C" void app_main(void)
     xTaskCreate(button_task, "button_task", 2048, button, 10, nullptr);
     
     ESP_LOGI(TAG, "Initialization complete. Ready to print!");
-    
-    // Blink LED to indicate ready
-    statusLED->blink(3, 100);
 }
