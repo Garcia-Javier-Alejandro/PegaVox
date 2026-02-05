@@ -85,7 +85,7 @@ SUSPICIOUS_TERMS_ES = [
     "pornografia", "porno", "erotico", "erotica",
     "orgasmo", "masturbacion", "masturbar",
     "prostitucion", "prostituta", "prostituto",
-    "violacion", "violar", "abuso", "abuso sexual",
+    "violacion", "violar", "abuso",
     "teta", "tetas", "culo", "culos", "pene", "penes",
     "concha", "cajeta"
 

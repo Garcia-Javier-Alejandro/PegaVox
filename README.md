@@ -47,11 +47,11 @@ This end-to-end script demonstrates all core features:
   - `.output.wav`, `.transcription.txt`, `.prompt.txt`, `.generated.png` (debug only)
 
 ### Device (ESP32-S3)
-- Minimal thin client (firmware under development)
-- Captures audio via I2S MEMS microphone
-- Sends to backend over HTTP
-- Receives printer-ready raster data
-- Streams to thermal printer hardware
+- **Firmware Status**: Phase 2 test (button → print via UART) ✅
+- Captures audio via I2S MEMS microphone (planned)
+- Sends to backend over HTTP (planned)
+- Receives printer-ready raster data (planned)
+- Streams to thermal printer hardware via UART (basic test working)
 
 ### Hardware (BOM)
 - ESP32-S3 microcontroller
@@ -131,10 +131,13 @@ Currently runs locally in a Python dev environment to generate images from a spo
 
 **Goal:** Stable networking + printing foundation.
 
-- [ ] **UART Printer Driver**
-  - Buffered writes with pacing
-  - Optional status reads (paper out / busy)
-  - Abort + recovery logic
+**Status:** ✅ Initial test firmware complete (Button → Print "Hello world")
+
+- [x] **UART Printer Driver** (Basic)
+  - ESC/POS command generation
+  - Text printing with line feeds
+  - Button-triggered print test
+  - TODO: Buffered writes with pacing, status reads, abort logic
 
 - [ ] **Wi-Fi & HTTPS Client**
   - Robust reconnect logic
@@ -151,6 +154,8 @@ Currently runs locally in a Python dev environment to generate images from a spo
   - Signed firmware images
   - Dual-partition with rollback
   - Safe-mode boot on repeated failure
+
+**Current Test:** See [device/firmware/README.md](device/firmware/README.md) for build instructions.
 
 ### Phase 3: Wi-Fi Provisioning & First-Boot UX
 
@@ -252,7 +257,20 @@ PegaVox/
 │   ├── app/               (FastAPI service – TODO)
 │   └── tests/
 ├── device/
-│   ├── firmware/          (ESP-IDF / ESP32-S3 code – TODO)
+│   ├── firmware/          (ESP-IDF / ESP32-S3 code – ✅ Phase 2 test)
+│   │   ├── main/
+│   │   │   ├── main.cpp            (App entry point: button → print flow)
+│   │   │   ├── ThermalPrinter.hpp  (ESC/POS printer driver interface)
+│   │   │   ├── ThermalPrinter.cpp  (ESC/POS printer driver implementation)
+│   │   │   ├── Button.hpp          (Debounced button handler interface)
+│   │   │   ├── Button.cpp          (Debounced button handler implementation)
+│   │   │   ├── LED.hpp             (Status LED interface)
+│   │   │   ├── LED.cpp             (Status LED implementation)
+│   │   │   └── CMakeLists.txt      (Component build config for firmware)
+│   │   ├── CMakeLists.txt          (Project build config for ESP-IDF)
+│   │   ├── sdkconfig.defaults      (Default ESP-IDF settings)
+│   │   ├── README.md               (Firmware build and test instructions)
+│   │   ├── .gitignore              (Ignore ESP-IDF build artifacts)
 │   │   ├── secrets_example.h
 │   │   └── secrets.h
 │   └── hardware/          (Schematics, PCB – TODO)
@@ -262,7 +280,8 @@ PegaVox/
 ├── docs/
 │   ├── mvp-checklist.md
 │   ├── backend-device-api-contract.md
-│   └── tech-stack-and-bom.md
+│   ├── tech-stack-and-bom.md
+│   └── pinout.md          (ESP32-S3 pin mapping – ✅)
 └── images/                (Reference images, diagrams)
 ```
 
