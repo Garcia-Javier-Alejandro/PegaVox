@@ -1,0 +1,9 @@
+{
+  "name": "I2CManager",
+  "version": "1.0.0",
+  "description": "I2C bus manager for OLED displays and other I2C peripherals",
+  "keywords": "i2c, oled, ssd1327, bus",
+  "authors": {
+    "name": "PegaVox Team"
+  }
+}

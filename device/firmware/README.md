@@ -27,19 +27,24 @@ The firmware uses a class-based architecture for maintainability and future expa
 - ESP32-S3 Dev Board
 - Thermal printer with TTL UART interface (e.g., Cashino, CSN-A2)
 - 30mm arcade push button
-- LED indicator
-- INMP441 I2S MEMS microphone (future)
-- SSD1327 OLED display (future)
+- SSD1327 OLED 128×128 display (I2C) – Phase 3+
+- INMP441 I2S MEMS microphone – Phase 4+
+
+**For detailed electrical configuration, pull-up requirements, and firmware setup**, see [BUTTON_AND_I2C_SETUP.md](BUTTON_AND_I2C_SETUP.md)
 
 ## Pin Configuration
 
 See [../../docs/pinout.md](../../docs/pinout.md) for complete pin mapping.
 
-**Current Test Uses:**
-- GPIO 12: Button input (pull-up enabled)
-- GPIO 15: LED indicator
-- GPIO 17: UART TX → Printer RX
-- GPIO 18: UART RX → Printer TX
+**Current Test Uses (Phase 2):**
+- GPIO 12: Button input (active-low, internal pull-up)
+- GPIO 17: UART TX (Printer)
+- GPIO 18: UART RX (Printer)
+
+**Future Expansion (Phase 3+):**
+- GPIO 41: I2C SDA (OLED display)
+- GPIO 42: I2C SCL (OLED display)
+- GPIO 4-6: I2S bus (microphone audio)
 
 ## Building and Flashing
 
@@ -124,10 +129,11 @@ If your printer uses a different baud rate, modify `UART_BAUD_RATE` in [src/main
 
 ### Button Not Working
 
-1. Check button wiring to GPIO 12
-2. Verify button connects GPIO 12 to GND when pressed
+1. Check button wiring to GPIO 12 → GND
+2. Verify button reads LOW when pressed using multimeter
 3. Check debounce logs in serial monitor
-4. Internal pull-up is enabled, no external resistor needed
+4. Internal pull-up is enabled; no external resistor needed
+5. See [BUTTON_AND_I2C_SETUP.md](BUTTON_AND_I2C_SETUP.md) for detailed troubleshooting
 
 ### Serial Monitor
 

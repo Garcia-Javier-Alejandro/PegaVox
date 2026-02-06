@@ -50,16 +50,19 @@
 
 ### I2C (SSD1327 OLED Display)
 
-- **Protocol**: I2C
+- **Protocol**: I2C (open-drain bus, requires pull-ups to 3.3V)
 - **Address**: 0x3C (typical for SSD1327)
-- **Speed**: 400 kHz (Fast Mode)
-- **Pull-ups**: 4.7kΩ recommended on SDA and SCL lines
-- **Display**: 128x128 pixels, 4-bit grayscale
-- **Status**: Planned for Phase 3 (OLED display driver not yet implemented)
-- **Notes**:
+- **Speed**: 400 kHz (Fast Mode, standard for OLED)
+- **Pins**:
   - SDA (data): GPIO 41
   - SCL (clock): GPIO 42
-  - 3.3V power supply
+- **Power**: 3.3V supply
+- **Pull-ups**: 
+  - **Status**: Most SSD1327 breakouts include 4.7kΩ pull-ups on PCB
+  - **To verify**: Check for resistor markings on breakout or use multimeter (should read ~4.7kΩ to 3.3V)
+  - **If missing**: Add external 4.7kΩ resistors: `SDA → 3.3V` and `SCL → 3.3V`
+- **Status**: Planned for Phase 3 (OLED display driver not yet implemented)
+- **See Also**: [BUTTON_AND_I2C_SETUP.md](../device/firmware/BUTTON_AND_I2C_SETUP.md) for detailed hardware and firmware configuration
 
 ### Button (User Input)
 

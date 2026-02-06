@@ -157,6 +157,8 @@ Currently runs locally in a Python dev environment to generate images from a spo
 
 **Current Test:** See [device/firmware/README.md](device/firmware/README.md) for build instructions.
 
+**Hardware Setup:** See [device/firmware/BUTTON_AND_I2C_SETUP.md](device/firmware/BUTTON_AND_I2C_SETUP.md) for button, I2C wiring, pull-up configuration, and verification procedures.
+
 ### Phase 3: Wi-Fi Provisioning & First-Boot UX
 
 **Goal:** Allow non-technical users to connect the device to Wi-Fi.
